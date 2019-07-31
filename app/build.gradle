@@ -1,0 +1,182 @@
+apply plugin: 'com.android.application'
+
+def androidId = rootProject.ext.androidId
+def dependenciesLib = rootProject.ext.dependencies
+def appId = rootProject.ext.appId
+def url = rootProject.ext.url
+
+android {
+    compileSdkVersion androidId.compileSdkVersion
+    buildToolsVersion androidId.buildToolsVersion
+
+    defaultConfig {
+        applicationId appId.app
+
+        minSdkVersion androidId.minSdkVersion
+        targetSdkVersion androidId.targetSdkVersion
+        versionCode androidId.versionCode
+        versionName androidId.versionName
+
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+
+        // 这个方法接收三个非空的参数，第一个：确定值的类型，第二个：指定key的名字，第三个：传值（必须是String）
+        // 为什么需要定义这个？因为src代码中有可能需要用到跨模块交互，如果是组件化模块显然不行
+        // 切记：不能在android根节点，只能在defaultConfig或buildTypes节点下
+        buildConfigField("boolean", "isRelease", String.valueOf(isRelease))
+
+        // 在gradle文件中配置选项参数值,写在defaultConfig节点下（用于APT传参接收）
+        javaCompileOptions {
+            annotationProcessorOptions {
+                includeCompileClasspath = true
+                arguments = [moduleName: project.getName(), packageNameForAPT: packageNameForAPT]
+            }
+        }
+
+        // 开启分包
+        multiDexEnabled true
+        // 设置分包配置
+        // multiDexKeepFile file('multidex-config.txt')
+
+        // 将svg图片生成 指定维度的png图片
+        // vectorDrawables.generatedDensities('xhdpi','xxhdpi')
+
+        // 使用support-v7兼容（5.0版本以上）
+        vectorDrawables.useSupportLibrary = true
+
+        // 只保留指定和默认资源
+        resConfigs('zh-rCN')
+
+        //配置so库CPU架构（真机：arm，模拟器：x86）
+        ndk {
+            //abiFilters('armeabi', 'armeabi-v7a')
+            abiFilters('x86', 'x86_64')
+        }
+        // 源集 - 设置源集的属性，更改源集的 Java 目录或者自由目录等
+        sourceSets {
+            main {
+                if (!isRelease) {
+                    // 如果是组件化模式，需要单独运行时
+                    manifest.srcFile 'src/main/AndroidManifest.xml'
+                    java.srcDirs = ['src/main/java']
+                    res.srcDirs = ['src/main/res']
+                    resources.srcDirs = ['src/main/resources']
+                    aidl.srcDirs = ['src/main/aidl']
+                    assets.srcDirs = ['src/main/assets']
+                } else {
+                    // 集成化模式，整个项目打包
+                    manifest.srcFile 'src/main/AndroidManifest.xml'
+                }
+            }
+        }
+    }
+
+    // 签名配置（隐形坑：必须写在buildTypes之前）
+    signingConfigs {
+        debug {
+            storeFile file("../star.jks")
+            // 签名证书的类型
+//            storeType "netease"
+            storePassword "star123"
+            keyAlias "star_alias"
+            keyPassword "star123"
+            v2SigningEnabled true  //是否开启V2打包
+        }
+
+        release {
+            storeFile file("../star.jks")
+            // 签名证书的类型
+//            storeType "netease"
+            storePassword "star123"
+            keyAlias "star_alias"
+            keyPassword "star123"
+            v2SigningEnabled true  //是否开启V2打包
+        }
+    }
+
+    buildTypes {
+        debug {
+            // 对构建类型设置签名信息
+            signingConfig signingConfigs.debug
+            buildConfigField("String", "url", "\"${url.debug}\"")
+        }
+
+        release {
+            minifyEnabled false
+            // 对构建类型设置签名信息
+            signingConfig signingConfigs.release
+            buildConfigField("String", "url", "\"${url.release}\"")
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    // AdbOptions 可以对 adb 操作选项添加配置
+    adbOptions {
+        // 配置操作超时时间，单位毫秒
+        timeOutInMs = 5 * 1000_0
+
+        // adb install 命令的选项配置
+        installOptions '-r', '-s'
+    }
+
+    // 对 dx 操作的配置，接受一个 DexOptions 类型的闭包，配置由 DexOptions 提供
+    dexOptions {
+        // 配置执行 dx 命令是为其分配的最大堆内存
+        javaMaxHeapSize "4g"
+        // 配置是否预执行 dex Libraries 工程，开启后会提高增量构建速度，不过会影响 clean 构建的速度，默认 true
+        preDexLibraries = false
+        // 配置是否开启 jumbo 模式，代码方法是超过 65535 需要强制开启才能构建成功
+        jumboMode true
+        // 配置 Gradle 运行 dx 命令时使用的线程数量
+        threadCount 8
+        // 配置multidex参数
+        additionalParameters = [
+                '--multi-dex', // 多dex分包
+                '--set-max-idx-number=50000', // 每个包内方法数上限
+                // '--main-dex-list=' + '/multidex-config.txt', // 打包到主classes.dex的文件列表
+                '--minimal-main-dex'
+        ]
+    }
+
+    // 执行 gradle lint 命令即可运行 lint 检查，默认生成的报告在 outputs/lint-results.html 中
+    lintOptions {
+        // 遇到 lint 检查错误会终止构建，一般设置为 false
+        abortOnError false
+        // 将警告当作错误来处理（老版本：warningAsErros）
+        warningsAsErrors false
+        // 检查新 API
+        check 'NewApi'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation project(path: ':commom_lib')
+    implementation project(path: ':module_service')
+
+    annotationProcessor project(':brouter_compiler')
+
+    if (isRelease) {
+        implementation project(':app_order')
+        implementation project(':app_personal')
+    }
+
+    testImplementation dependenciesLib.test_junit
+    androidTestImplementation dependenciesLib.test_runner
+    androidTestImplementation dependenciesLib.test_espresso
+
+
+    implementation dependenciesLib.appcompat_v7
+    implementation dependenciesLib.appcompat_constraint_layout
+
+//    implementation 'com.jakewharton:butterknife:10.1.0'
+//    annotationProcessor 'com.jakewharton:butterknife-compiler:10.1.0'
+
+    api "com.jakewharton:butterknife:8.6.0"
+    annotationProcessor "com.jakewharton:butterknife-compiler:8.6.0"
+
+}

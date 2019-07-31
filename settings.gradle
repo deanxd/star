@@ -1,0 +1,1 @@
+include ':app', ':app_order', ':app_personal', ':commom_lib', ':brouter_compiler', ':brouter_annotation', ':brouter_api', ':module_service'
